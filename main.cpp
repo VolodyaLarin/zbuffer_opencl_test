@@ -129,16 +129,18 @@ int main(int argc, char *argv[]) {
 
             };
 
-            std::cout << polygon1.points[0].x << " " << polygon1.points[0].y << " " << polygon1.points[0].z: << std::endl;
+            std::cout << polygon1.points[0].x << " " << polygon1.points[0].y << " " << polygon1.points[0].z << std::endl;
             polygons.emplace_back(polygon1);
         }
     }
 
-    auto *cl_models_buffer = new cl_polygon[polygons.size()];
+    auto *cl_polygons_buffer = new cl_float3 [polygons.size() * 3];
     unsigned cl_models_count = 0;
     for (auto &p: polygons) {
-        cl_models_buffer[cl_models_count] = p;
-        cl_models_count++;
+        cl_polygons_buffer[cl_models_count] = p.points[0];
+        cl_polygons_buffer[cl_models_count + 1] = p.points[1];
+        cl_polygons_buffer[cl_models_count + 2] = p.points[2];
+        cl_models_count+=3;
     }
 
     cl::Kernel kernel(program, "render", nullptr);
@@ -151,15 +153,15 @@ int main(int argc, char *argv[]) {
 
     cl::Buffer cl_depth(
             ctx,
-            CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY,
+            CL_MEM_READ_WRITE | CL_MEM_HOST_READ_ONLY,
             sizeof(cl_float) * w * h
     );
 
     cl::Buffer cl_models(
             ctx,
-            CL_MEM_WRITE_ONLY | CL_MEM_HOST_READ_ONLY,
-            sizeof(*cl_models_buffer) * cl_models_count,
-            cl_models_buffer
+            CL_MEM_READ_ONLY | CL_MEM_ALLOC_HOST_PTR | CL_MEM_COPY_HOST_PTR,
+            sizeof(cl_float4) * cl_models_count,
+            cl_polygons_buffer
     );
 
     cl_uint2 wh = {static_cast<cl_uint>(w), static_cast<cl_uint>(h)};
@@ -174,10 +176,8 @@ int main(int argc, char *argv[]) {
 
     cl::CommandQueue queue(ctx, device);
     auto err_q = queue.enqueueFillBuffer<cl_uchar4>(cl_image, {255, 255, 255, 255}, 0, w * h);
-
     err_q = queue.enqueueFillBuffer<float>(cl_depth, -CL_INFINITY, 0, w * h);
-
-    err_q = queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(cl_models_count));
+    err_q = queue.enqueueNDRangeKernel(kernel, cl::NullRange, cl::NDRange(cl_models_count / 3));
 
 
     colorBuffer = new cl_uchar3[w * h];

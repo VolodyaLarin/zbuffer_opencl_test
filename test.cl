@@ -1,3 +1,4 @@
+#pragma OPENCL EXTENSION cl_khr_fp64 : enable
 
 // Define C++ Classes as OpenCL structs
 
@@ -29,7 +30,9 @@ float3 barycentric(float3 A, float3 B, float3 C, float3 P) {
 }
 
 
-void triangle(float3 *pts, global float *zbuffer, global uchar4 *image, int w, int h, uchar4 color) {
+void triangle(const global float3 *pts, global float *zbuffer, global uchar4 *image, int w, int h, uchar4 color) {
+
+
     float2 bboxmin = (float2)( INFINITY,  INFINITY);
     float2 bboxmax = (float2)( -INFINITY, -INFINITY);
     float2   clamp   = (float2)(w - 1, h - 1);
@@ -40,6 +43,8 @@ void triangle(float3 *pts, global float *zbuffer, global uchar4 *image, int w, i
             bboxmax[j] = min(clamp[j], max(bboxmax[j], pts[i][j]));
         }
     }
+
+    printf("bboxmin: %f %f, bboxmax: %f %f\n", bboxmin.x, bboxmin.y, bboxmax.x, bboxmax.y);
 
     float3 P;
     for (P.x = bboxmin.x; P.x <= bboxmax.x; P.x++) {
@@ -55,11 +60,17 @@ void triangle(float3 *pts, global float *zbuffer, global uchar4 *image, int w, i
             }
             int pos = P.x+P.y*w;
             
+            // printf("P: %f %f %f, pos: %d, z: %f \n", P.x, P.y, P.z, pos, zbuffer[pos]);
 
             if (zbuffer[pos] < P.z) {
+                printf("FILL P: %f %f %f, pos: %d, z: %f Color: %u %u %u %u \n", P.x, P.y, P.z, pos, zbuffer[pos],  color.x, color.y, color.z, color.w);
+
                 zbuffer[pos] = P.z;
 
+                // printf("After FILL P: %f %f %f, pos: %d, z: %f \n", P.x, P.y, P.z, pos, zbuffer[pos]);
+
                 image[pos] = color;
+
             }
         }
     }
@@ -71,7 +82,7 @@ void triangle(float3 *pts, global float *zbuffer, global uchar4 *image, int w, i
 kernel void render(global uchar4 *pixels,
                    global float *zbuffer,
                    global const uint2 *wh,
-                   global const cl_polygon *polygons
+                   global const float3 *polygons
                    ) {
 
     int i = get_global_id(0);
@@ -87,16 +98,9 @@ kernel void render(global uchar4 *pixels,
     // pixels[i] = (uchar4)(i % 255, (i + 50) % 255, i % 255, 255);
     
 
-    cl_polygon p = polygons[i];
-
-    float3 P = p.points[0];
-    uchar4 C = p.color;
-
-    printf("%d. %f %f %f \n", i, P.x, P.y, P.z);
-    printf("%d. %u %u %u %u \n", i, C.x, C.y, C.z, C.w);
+    const global float3 *p = polygons + i * 3;
 
 
-
-    triangle(p.points, zbuffer, pixels, wh->x, wh->y, colors[i % 4]);
+    triangle(p, zbuffer, pixels, wh->x, wh->y, colors[i % 4]);
 
 }
